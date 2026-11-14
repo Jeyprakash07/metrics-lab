@@ -1,0 +1,9 @@
+apiVersion: 1
+providers:
+  - name: metrics-lab
+    folder: Metrics Lab
+    type: file
+    allowUiUpdates: true
+    updateIntervalSeconds: 30   # edit the JSON on disk and Grafana reloads it
+    options:
+      path: /var/lib/grafana/dashboards

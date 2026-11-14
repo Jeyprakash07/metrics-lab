@@ -1,0 +1,37 @@
+# Alerting rules are evaluated by Prometheus. When firing, they are sent to
+# Alertmanager (not included in this lab), which dedupes, groups and routes them
+# to Slack or PagerDuty. View them at http://localhost:9090/alerts
+groups:
+  - name: order-service.alerts
+    rules:
+      - alert: TargetDown
+        expr: up == 0          # free signal you only get with pull
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: "{{ $labels.job }}/{{ $labels.instance }} is not being scraped"
+
+      - alert: HighErrorRate
+        expr: job:shop_http_errors:ratio_rate5m > 0.05
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "{{ $labels.job }} 5xx ratio is {{ $value | humanizePercentage }}"
+
+      - alert: SlowRequests
+        expr: job_route:shop_http_request_duration_seconds:p99_5m > 0.5
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: "p99 of {{ $labels.route }} is {{ $value | humanizeDuration }}"
+
+      - alert: QueueSaturated
+        expr: job:shop_queue_utilization:ratio > 0.8
+        for: 2m
+        labels: { severity: ticket }
+
+      - alert: BatchJobStale
+        expr: time() - shop_batch_last_success_timestamp_seconds > 300
+        labels: { severity: ticket }
+        annotations:
+          summary: "{{ $labels.job }} has not succeeded for {{ $value | humanizeDuration }}"

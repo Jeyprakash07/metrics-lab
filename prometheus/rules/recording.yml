@@ -1,0 +1,31 @@
+# Recording rules: precompute expensive queries every evaluation_interval and
+# store the result as a NEW series. Dashboards that query 1000 pods at once stay
+# fast, and these are what you remote_write to long-term storage.
+# Naming convention:  level:metric:operations
+groups:
+  - name: order-service.recording
+    rules:
+      - record: job_route:shop_http_requests:rate5m
+        expr: sum by (job, route) (rate(shop_http_requests_total[5m]))
+
+      - record: job:shop_http_errors:ratio_rate5m
+        # GOTCHA: if no 5xx has ever happened, the numerator has NO series and the
+        # division returns nothing (not 0). "or ... * 0" fills in a zero per job.
+        expr: |
+          (
+            sum by (job) (rate(shop_http_requests_total{code=~"5.."}[5m]))
+            or
+            sum by (job) (rate(shop_http_requests_total[5m])) * 0
+          )
+          /
+          sum by (job) (rate(shop_http_requests_total[5m]))
+
+      # Aggregate the BUCKETS first (sum by le), THEN compute the quantile.
+      # This is why histograms beat summaries: buckets from many pods add up.
+      - record: job_route:shop_http_request_duration_seconds:p99_5m
+        expr: |
+          histogram_quantile(0.99,
+            sum by (job, route, le) (rate(shop_http_request_duration_seconds_bucket[5m])))
+
+      - record: job:shop_queue_utilization:ratio
+        expr: sum by (job) (shop_queue_depth) / sum by (job) (shop_queue_capacity)

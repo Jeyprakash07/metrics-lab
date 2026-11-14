@@ -1,0 +1,6 @@
+[
+  {
+    "targets": ["pushgateway:9091"],
+    "labels": { "env": "lab", "team": "payments" }
+  }
+]

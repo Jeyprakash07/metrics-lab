@@ -1,0 +1,70 @@
+# docker compose up -d --build      then open:
+#   Grafana     http://localhost:3000   (anonymous admin, no login)
+#   Prometheus  http://localhost:9090   (Status -> Targets, Service Discovery)
+#   Pushgateway http://localhost:9091
+name: metrics-lab
+
+services:
+  order-service:
+    build: ./order-service
+    image: metrics-lab/order-service:dev
+    command: ["-mode=server", "-workers=8", "-queue=200"]
+    deploy:
+      replicas: 3               # try: docker compose up -d --scale order-service=5
+    labels:                     # opt-in for docker_sd_configs (like k8s annotations)
+      prometheus.scrape: "true"
+      prometheus.port: "8080"
+      prometheus.path: "/metrics"
+      env: lab
+    # No host ports: Prometheus reaches replicas on the internal network, like in k8s.
+    # Peek at raw metrics with:
+    #   docker compose exec loadgen wget -qO- http://order-service:8080/metrics
+
+  loadgen:
+    build: ./order-service
+    image: metrics-lab/order-service:dev
+    command: ["-mode=loadgen", "-target=http://order-service:8080", "-rps=40"]
+    depends_on: [order-service]
+
+  batch-job:
+    build: ./order-service
+    image: metrics-lab/order-service:dev
+    command: ["-mode=batch", "-pushgateway=http://pushgateway:9091", "-interval=60s"]
+    depends_on: [pushgateway]
+
+  pushgateway:
+    image: prom/pushgateway:v1.11.1
+    ports: ["9091:9091"]
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    user: root                  # lets the lab read the Docker socket for docker_sd
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # RETENTION: data older than this is deleted (whole 2h blocks at a time).
+      - --storage.tsdb.retention.time=15d
+      # ...or when the TSDB exceeds this size, whichever comes first.
+      - --storage.tsdb.retention.size=5GB
+      - --web.enable-lifecycle  # allows: curl -X POST localhost:9090/-/reload
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prom-data:/prometheus   # the TSDB. Lose this volume = lose history.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/order-service.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+    depends_on: [prometheus]
+
+volumes:
+  prom-data:

@@ -1,0 +1,18 @@
+# Grafana "provisioning": config-as-code. On startup Grafana reads these files
+# and creates the data sources and dashboards, so nobody clicks around in the UI
+# and every environment is identical. In production this lives in git (or in a
+# Helm chart / Terraform grafana provider).
+#
+# Grafana stores NO metrics. It sends PromQL queries to Prometheus's HTTP API
+# (/api/v1/query_range) and draws the results.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy             # the Grafana server makes the call, not your browser
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 10s       # match the scrape interval so $__rate_interval is right
+      httpMethod: POST
