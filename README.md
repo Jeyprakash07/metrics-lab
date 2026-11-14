@@ -16,6 +16,7 @@ docker compose up -d --build
 | Raw `/metrics` of one replica | `docker compose exec loadgen wget -qO- http://order-service:8080/metrics` |
 
 ```bash
+./status.sh                                    # containers, targets, req/s, p99, alerts
 docker compose up -d --scale order-service=5   # watch targets appear, no config change
 docker compose down -v                         # stop and delete stored data
 ```
